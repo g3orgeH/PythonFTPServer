@@ -1,1 +1,14 @@
-[]
+[
+    {
+        "username": "admin",
+        "password": "password12",
+        "homedir": "FTP_ROOT",
+        "perm": "elradf"
+    },
+    {
+        "username": "admin1",
+        "password": "password12",
+        "homedir": "FTP_ROOT",
+        "perm": "elradfmw"
+    }
+]

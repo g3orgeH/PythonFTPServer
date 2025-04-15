@@ -8,44 +8,11 @@ import os
 from datetime import datetime
 from flask import send_from_directory, jsonify
 from urllib.parse import unquote
+import time
 
 # === FTP Server Setup ===
 FTP_ROOT = "FTP_ROOT"
 FTP_PORT = 2121
-
-authorizer = DummyAuthorizer()
-def load_users_from_file(path="users.json"):
-    if not os.path.exists(path):
-        print(f"User file {path} not found. Creating a new one...")
-        with open(path, 'w') as f:
-            json.dump([], f, indent=4)
-        return
-
-    with open(path, 'r') as f:
-        users = json.load(f)
-        for user in users:
-            try:
-                authorizer.add_user(
-                    user["username"],
-                    user["password"],
-                    user.get("homedir", FTP_ROOT),
-                    perm=user.get("perm", "elradfmw")
-                )
-                print(f"[+] Loaded user: {user['username']}")
-            except Exception as e:
-                print(f"[!] Error loading user {user['username']}: {e}")
-
-# Call the loader
-load_users_from_file()
-
-#authorizer.add_anonymous(FTP_ROOT, perm="elradfmw") # Anonymous user
-
-
-
-handler = FTPHandler
-handler.authorizer = authorizer
-
-server = FTPServer(("0.0.0.0", FTP_PORT), handler)
 
 # === Management API ===
 app = Flask(__name__)
@@ -110,9 +77,6 @@ def admin_panel():
         <input type="text" name="homedir" value="FTP_ROOT"><br>
         <label>Permissions:</label><br>
         <select name="perm" id="perm">
-          <option value="">No Access</option>
-          <option value="r">Read Only</option>
-          <option value="lr">Read + List</option>
           <option value="elradf">Standard User</option>
           <option value="elradfmw" selected>Full Access</option>
         </select>
@@ -415,24 +379,108 @@ def remove_user():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
-# === Threads for Web + FTP ===
-def run_ftp():
-    while True:
-        print(f"FTP server running on port {FTP_PORT}")
-        server.serve_forever()
-        with open("log.txt", "a") as file:
-            file.write("FTP Server failed at: "+datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
+# def run_ftp():
+#     while True:
+#         try:
+#             print(f"FTP server running on port {FTP_PORT}")
+#             server.serve_forever()
+#         except Exception as e:
+#             with open("log.txt", "a") as file:
+#                 file.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] FTP Server crashed: {e}\n")
+#             print(f"FTP Server crashed: {e}")
+#         finally:
+#             # Clean up or reset any necessary resources here
+#             time.sleep(5)  # Wait before restarting
+#
+#
+# def run_web():
+#     while True:
+#         try:
+#             print("Web server running on port 443")
+#             app.run(host='0.0.0.0', port=443, ssl_context=('cert.pem', 'key.pem'))
+#         except Exception as e:
+#             with open("log.txt", "a") as file:
+#                 file.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Web Server crashed: {e}\n")
+#             print(f"Web Server crashed: {e}")
+#         finally:
+#             # Clean up or reset any necessary resources here
+#             time.sleep(5)  # Wait before restarting
 
+
+
+import threading
+import time
+import traceback
+
+def thread_wrapper(target):
+    while True:
+        try:
+            target()
+        except Exception as e:
+            print(f"Thread {threading.current_thread().name} crashed with exception: {e}")
+
+            if threading.current_thread().name == "FTPThread":
+                with open("log.txt", "a") as file:
+                    file.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] FTP Server crashed: {e}\n")
+                server.close_all()
+            else:
+                with open("log.txt", "a") as file:
+                    file.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Web Server crashed: {e}\n")
+            traceback.print_exc()
+            time.sleep(2)  # Short pause before restarting
+        else:
+            break  # Exit if target completes normally
+
+def run_ftp():
+    global authorizer
+    authorizer = DummyAuthorizer()
+
+    def load_users_from_file(path="users.json"):
+        if not os.path.exists(path):
+            print(f"User file {path} not found. Creating a new one...")
+            with open(path, 'w') as f:
+                json.dump([], f, indent=4)
+            return
+
+        with open(path, 'r') as f:
+            users = json.load(f)
+            for user in users:
+                try:
+                    authorizer.add_user(
+                        user["username"],
+                        user["password"],
+                        user.get("homedir", FTP_ROOT),
+                        perm=user.get("perm", "elradfmw")
+                    )
+                    print(f"[+] Loaded user: {user['username']}")
+                except Exception as e:
+                    print(f"[!] Error loading user {user['username']}: {e}")
+
+    # Call the loader
+    load_users_from_file()
+
+    # authorizer.add_anonymous(FTP_ROOT, perm="elradfmw") # Anonymous user
+
+    handler = FTPHandler
+    handler.authorizer = authorizer
+    global server
+    server = FTPServer(("0.0.0.0", FTP_PORT), handler)
+    print("Running FTP server...")
+    print(f"FTP server running on port {FTP_PORT}")
+    server.serve_forever()
 
 def run_web():
+    print("Running Web server...")
+    app.run(host='0.0.0.0', port=443, ssl_context=('cert.pem', 'key.pem'))
+
+if __name__ == "__main__":
+    ftp_thread = threading.Thread(target=lambda: thread_wrapper(run_ftp), daemon=True, name="FTPThread")
+    web_thread = threading.Thread(target=lambda: thread_wrapper(run_web), daemon=True, name="WebThread")
+
+    ftp_thread.start()
+    web_thread.start()
+
+    # Keep main thread alive
     while True:
-        app.run(host='0.0.0.0', port=443, ssl_context=('cert.pem', 'key.pem'))
+        time.sleep(10)
 
-
-        with open("log.txt", "a") as file:
-            file.write("Web Server failed at: "+datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
-
-
-if __name__ == '__main__':
-    threading.Thread(target=run_ftp).start()
-    threading.Thread(target=run_web).start()

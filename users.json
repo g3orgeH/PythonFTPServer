@@ -4,5 +4,11 @@
         "password": "123",
         "homedir": "FTP_ROOT",
         "perm": "elradfmw"
+    },
+    {
+        "username": "admin1",
+        "password": "password12",
+        "homedir": "FTP_ROOT",
+        "perm": "elradfmw"
     }
 ]
