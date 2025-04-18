@@ -1,14 +1,15 @@
 import threading
-from flask import Flask, request, jsonify
 from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import FTPServer
 import json
 import os
 from datetime import datetime
-from flask import send_from_directory, jsonify
+from flask import Flask, request, send_from_directory, jsonify, session, redirect, url_for
 from urllib.parse import unquote
+import threading
 import time
+import traceback
 
 # === FTP Server Setup ===
 FTP_ROOT = "FTP_ROOT"
@@ -18,7 +19,7 @@ FTP_PORT = 2121
 app = Flask(__name__)
 app.secret_key = 'D7DfmEAH^T4@MA0NBavT'  # Make this strong!
 
-from flask import session, redirect, url_for
+
 @app.before_request
 def require_login():
     allowed_routes = ['login', 'logout']  # add any more public routes here
@@ -408,9 +409,7 @@ def remove_user():
 
 
 
-import threading
-import time
-import traceback
+
 
 def thread_wrapper(target):
     while True:
